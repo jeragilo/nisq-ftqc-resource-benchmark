@@ -1,0 +1,24 @@
+name: experiment-1-full
+
+on:
+  workflow_dispatch:
+
+jobs:
+  full-sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run full Experiment 1
+        run: python -m pipelines.exp01_qem_sweep
+      - name: Upload raw Experiment 1 data
+        uses: actions/upload-artifact@v4
+        with:
+          name: experiment-1-raw
+          path: results/raw/experiment_1.csv
+          if-no-files-found: error
