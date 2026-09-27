@@ -2,6 +2,11 @@ name: experiment-1-full
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - experiment-1-qem-sweep
+    paths:
+      - ".github/workflows/experiment_1_full.yml"
 
 jobs:
   full-sweep:
