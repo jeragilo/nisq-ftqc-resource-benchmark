@@ -40,7 +40,6 @@ jobs:
           if-no-files-found: error
 
   experiment-1-full:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/experiment-1-qem-sweep'
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 180
