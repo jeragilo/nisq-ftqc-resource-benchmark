@@ -101,7 +101,7 @@ def grid(profile: bool):
     ]
 
 
-def run(output: str, profile=False, resume=False):
+def run(output: str, profile=False, resume=False, max_conditions=0):
     path=Path(output)
     meta_path=path.with_suffix(".metadata.json")
 
@@ -188,7 +188,7 @@ def main():
     ap.add_argument("--profile",action="store_true")
     ap.add_argument("--resume",action="store_true")
     a=ap.parse_args()
-    run(a.output,profile=a.profile,resume=a.resume)
+    run(a.output,profile=a.profile,resume=a.resume,max_conditions=a.max_conditions)
 
 
 if __name__=="__main__":
