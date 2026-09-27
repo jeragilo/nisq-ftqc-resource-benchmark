@@ -163,6 +163,11 @@ def run(output: str, profile=False, resume=False, max_conditions=0):
             f"| elapsed={elapsed/60:.1f}m ETA={eta/60:.1f}m",
             flush=True,
         )
+        del blocks, payload, rows, h
+        gc.collect()
+        if max_conditions and completed_this_run >= max_conditions:
+            print(f"Chunk limit reached after {completed_this_run} new conditions.", flush=True)
+            break
 
     elapsed=time.perf_counter()-start
     meta["completed_utc"]=datetime.now(timezone.utc).isoformat()
