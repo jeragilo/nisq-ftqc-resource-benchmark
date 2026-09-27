@@ -192,6 +192,7 @@ def main():
     ap.add_argument("--output",default="results/raw/experiment_2_production.csv")
     ap.add_argument("--profile",action="store_true")
     ap.add_argument("--resume",action="store_true")
+    ap.add_argument("--max-conditions",type=int,default=0,help="Stop cleanly after this many newly completed conditions; 0 means no limit.")
     a=ap.parse_args()
     run(a.output,profile=a.profile,resume=a.resume,max_conditions=a.max_conditions)
 
