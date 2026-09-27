@@ -47,3 +47,15 @@ def test_repeated_checks_accept_folded_blocks_with_terminal_measurements():
     assert accepted == 64
     assert rejected == 0
     assert success == 64
+
+def test_check_intervals_share_identical_underlying_payload():
+    from workloads.checkable_mirror_blocks import make_identity_microblocks, group_microblocks, compose_checkable_payload
+
+    micro = make_identity_microblocks(4, 8, 13)
+    p2 = compose_checkable_payload(group_microblocks(micro, 2))
+    p8 = compose_checkable_payload(group_microblocks(micro, 8))
+
+    # Ignore register naming; operation sequences on data must be identical.
+    ops2 = [(inst.operation.name, [p2.find_bit(q).index for q in inst.qubits]) for inst in p2.data]
+    ops8 = [(inst.operation.name, [p8.find_bit(q).index for q in inst.qubits]) for inst in p8.data]
+    assert ops2 == ops8
