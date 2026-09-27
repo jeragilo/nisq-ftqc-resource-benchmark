@@ -59,3 +59,19 @@ def test_check_intervals_share_identical_underlying_payload():
     ops2 = [(inst.operation.name, [p2.find_bit(q).index for q in inst.qubits]) for inst in p2.data]
     ops8 = [(inst.operation.name, [p8.find_bit(q).index for q in inst.qubits]) for inst in p8.data]
     assert ops2 == ops8
+
+def test_repeated_checks_reuse_single_physical_ancilla():
+    blocks = make_checkable_mirror_blocks(2, 64, 2, 0)
+    checked = add_repeated_boundary_parity_checks(blocks)
+    assert checked.check_rounds == 32
+    assert checked.ancilla_qubits == 1
+    assert checked.syndrome_bits == 32
+    assert checked.circuit.num_qubits == 3
+
+
+def test_depth64_l2_transpiles_with_reused_ancilla():
+    blocks = make_checkable_mirror_blocks(2, 64, 2, 0)
+    checked = add_repeated_boundary_parity_checks(blocks)
+    sim = AerSimulator()
+    tc = transpile(checked.circuit, sim, optimization_level=0, seed_transpiler=0)
+    assert tc.num_qubits <= sim.configuration().n_qubits
