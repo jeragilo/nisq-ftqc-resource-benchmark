@@ -23,3 +23,14 @@ def test_qed_adds_one_ancilla():
     assert checked.data_qubits == 4
     assert checked.ancilla_qubits == 1
     assert checked.circuit.num_qubits == 5
+
+
+def test_qed_replaces_terminal_payload_measurements():
+    payload = make_mirror_circuit(2, 5, 0)
+    assert any(inst.operation.name == "measure" for inst in payload.data)
+
+    checked = add_global_z_parity_check(payload)
+    measure_ops = [inst for inst in checked.circuit.data if inst.operation.name == "measure"]
+
+    # One syndrome measurement plus one measurement per data qubit.
+    assert len(measure_ops) == 3
