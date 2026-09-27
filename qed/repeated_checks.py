@@ -11,25 +11,41 @@ class RepeatedQEDCircuit:
     syndrome_bits: int
     check_rounds: int
 
+def _unitary_block(block: QuantumCircuit) -> QuantumCircuit:
+    """Return a block with terminal measurements removed defensively."""
+    try:
+        return block.remove_final_measurements(inplace=False)
+    except AttributeError:
+        qc = block.copy()
+        while qc.data and qc.data[-1].operation.name == "measure":
+            qc.data.pop()
+        return qc
+
 def add_repeated_boundary_parity_checks(blocks: list[QuantumCircuit]) -> RepeatedQEDCircuit:
     """Insert a fresh ancilla parity check after each ideal-identity mirror block."""
     if not blocks:
         raise ValueError("blocks cannot be empty")
-    n, rounds = blocks[0].num_qubits, len(blocks)
+
+    clean_blocks = [_unitary_block(block) for block in blocks]
+    n, rounds = clean_blocks[0].num_qubits, len(clean_blocks)
     data = QuantumRegister(n, "data")
     anc = QuantumRegister(rounds, "anc")
     data_c = ClassicalRegister(n, "data_c")
     syn_c = ClassicalRegister(rounds, "syn_c")
     qc = QuantumCircuit(data, anc, data_c, syn_c)
-    for r, block in enumerate(blocks):
+
+    for r, block in enumerate(clean_blocks):
         if block.num_qubits != n:
             raise ValueError("all blocks must have the same width")
         for inst in block.data:
+            if inst.operation.name == "measure":
+                raise ValueError("internal measurement found inside a QED unitary block")
             qargs = [data[block.find_bit(q).index] for q in inst.qubits]
             qc.append(inst.operation, qargs, [])
         for q in data:
             qc.cx(q, anc[r])
         qc.measure(anc[r], syn_c[r])
+
     qc.measure(data, data_c)
     return RepeatedQEDCircuit(qc, n, rounds, rounds, rounds)
 
