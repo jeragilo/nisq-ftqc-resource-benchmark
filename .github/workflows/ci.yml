@@ -32,29 +32,22 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run small Experiment 1 smoke sweep
         run: python -m pipelines.exp01_qem_sweep --quick --output results/raw/experiment_1_smoke.csv
+      - name: Analyze smoke sweep
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          p = "results/raw/experiment_1_smoke.csv"
+          df = pd.read_csv(p)
+          assert len(df) == 32
+          assert set(df["method"]) == {"raw", "zne"}
+          assert df.groupby(["qubits","nominal_depth","noise_probability","nominal_shots","seed"])["method"].nunique().eq(2).all()
+          print("Experiment 1 smoke integrity checks passed.")
+          PY
       - name: Upload smoke data
         uses: actions/upload-artifact@v4
         with:
           name: experiment-1-smoke
-          path: results/raw/experiment_1_smoke.csv
-          if-no-files-found: error
-
-  experiment-1-full:
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run full Experiment 1
-        run: python -m pipelines.exp01_qem_sweep
-      - name: Upload raw Experiment 1 data
-        uses: actions/upload-artifact@v4
-        with:
-          name: experiment-1-raw
-          path: results/raw/experiment_1.csv
+          path: |
+            results/raw/experiment_1_smoke.csv
+            results/raw/experiment_1_smoke.metadata.json
           if-no-files-found: error
