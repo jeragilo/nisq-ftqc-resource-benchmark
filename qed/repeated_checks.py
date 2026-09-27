@@ -22,14 +22,20 @@ def _unitary_block(block: QuantumCircuit) -> QuantumCircuit:
         return qc
 
 def add_repeated_boundary_parity_checks(blocks: list[QuantumCircuit]) -> RepeatedQEDCircuit:
-    """Insert a fresh ancilla parity check after each ideal-identity mirror block."""
+    """
+    Insert repeated boundary parity checks using one reusable ancilla.
+
+    Each check writes to a distinct classical syndrome bit, then resets the same
+    ancilla before the next block. This models sequential syndrome extraction
+    without allocating one physical ancilla per check round.
+    """
     if not blocks:
         raise ValueError("blocks cannot be empty")
 
     clean_blocks = [_unitary_block(block) for block in blocks]
     n, rounds = clean_blocks[0].num_qubits, len(clean_blocks)
     data = QuantumRegister(n, "data")
-    anc = QuantumRegister(rounds, "anc")
+    anc = QuantumRegister(1, "anc")
     data_c = ClassicalRegister(n, "data_c")
     syn_c = ClassicalRegister(rounds, "syn_c")
     qc = QuantumCircuit(data, anc, data_c, syn_c)
@@ -43,11 +49,13 @@ def add_repeated_boundary_parity_checks(blocks: list[QuantumCircuit]) -> Repeate
             qargs = [data[block.find_bit(q).index] for q in inst.qubits]
             qc.append(inst.operation, qargs, [])
         for q in data:
-            qc.cx(q, anc[r])
-        qc.measure(anc[r], syn_c[r])
+            qc.cx(q, anc[0])
+        qc.measure(anc[0], syn_c[r])
+        if r != rounds - 1:
+            qc.reset(anc[0])
 
     qc.measure(data, data_c)
-    return RepeatedQEDCircuit(qc, n, rounds, rounds, rounds)
+    return RepeatedQEDCircuit(qc, n, 1, rounds, rounds)
 
 def split_repeated_counts(counts: dict[str, int]) -> tuple[int, int, int]:
     """Accept only shots with an all-zero multi-round syndrome."""
