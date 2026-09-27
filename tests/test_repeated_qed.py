@@ -28,3 +28,22 @@ def test_check_interval_controls_round_count():
     assert len(make_checkable_mirror_blocks(4, 8, 2, 0)) == 4
     assert len(make_checkable_mirror_blocks(4, 8, 4, 0)) == 2
     assert len(make_checkable_mirror_blocks(4, 8, 8, 0)) == 1
+
+def test_repeated_checks_accept_folded_blocks_with_terminal_measurements():
+    from mitigation.zne import global_fold
+
+    blocks = make_checkable_mirror_blocks(2, 8, 2, 7)
+    measured_blocks = []
+    for block in blocks:
+        b = block.copy()
+        b.measure_all()
+        measured_blocks.append(global_fold(b, 1))
+
+    checked = add_repeated_boundary_parity_checks(measured_blocks)
+    sim = AerSimulator()
+    tc = transpile(checked.circuit, sim, optimization_level=0, seed_transpiler=7)
+    counts = sim.run(tc, shots=64, seed_simulator=7).result().get_counts()
+    accepted, rejected, success = split_repeated_counts(counts)
+    assert accepted == 64
+    assert rejected == 0
+    assert success == 64
