@@ -99,6 +99,68 @@ def crossover_candidates(wide, agg, top_n=60):
     ranked=c.sort_values(["candidate_score","noise_probability","total_depth"],ascending=[True,False,False])
     return ranked.head(top_n)
 
+def targeted_candidates(wide, agg, top_n=30):
+    """Select scientifically consequential E3 boundaries, not merely tiny-error ties."""
+    h=agg[agg.method=="qed_repeated_zne"][CELL+[
+        "mean_acceptance","clipping_fraction","mean_two_qubit_gates",
+        "mean_depth","mean_effective_shots"
+    ]].copy()
+    c=wide.merge(h,on=CELL,how="left")
+    c["qem_qed_gap"]=(c["qed_repeated"]-c["zne"]).abs()
+    c["qed_hybrid_gap"]=(c["qed_repeated"]-c["qed_repeated_zne"]).abs()
+    c["acceptance_penalty"]=1-c["mean_acceptance"]
+
+    # A: meaningful QEM<->QED boundary. Exclude near-perfect raw regimes.
+    a=c[c["raw"]>=0.02].copy()
+    a["boundary_type"]="qem_qed"
+    a["boundary_score"]=a["qem_qed_gap"] / a["raw"].clip(lower=1e-12)
+    a=a.sort_values(["boundary_score","raw"],ascending=[True,False]).head(top_n)
+
+    # B: QED<->Hybrid boundary. Penalize clipped hybrid cells because a clipped
+    # extrapolation is not clean evidence of a physical crossover.
+    b=c[(c["raw"]>=0.02) & (c["clipping_fraction"]<=0.25)].copy()
+    b["boundary_type"]="qed_hybrid"
+    b["boundary_score"]=(
+        b["qed_hybrid_gap"]/b["qed_repeated"].clip(lower=1e-12)
+        +0.25*b["clipping_fraction"]
+    )
+    b=b.sort_values(["boundary_score","mean_acceptance"],ascending=[True,True]).head(top_n)
+
+    # C: operational sampling boundary. Target acceptance near interpretable
+    # thresholds while requiring a nontrivial noisy problem.
+    thresholds=(0.50,0.25,0.10)
+    parts=[]
+    for t in thresholds:
+        x=c[c["raw"]>=0.05].copy()
+        x["acceptance_target"]=t
+        x["boundary_type"]=f"acceptance_{t:g}"
+        x["boundary_score"]=(x["mean_acceptance"]-t).abs()
+        parts.append(x.sort_values(
+            ["boundary_score","raw"],ascending=[True,False]
+        ).head(max(1,top_n//len(thresholds))))
+    acceptance=pd.concat(parts,ignore_index=True)
+
+    return a,b,acceptance
+
+
+def recommended_design(qem_qed, qed_hybrid, acceptance, per_type=8):
+    """Balanced E3 shortlist; final lock occurs only after E2 reaches 9600."""
+    pieces=[]
+    for frame in (qem_qed,qed_hybrid,acceptance):
+        x=frame.copy()
+        # Favor diversity across width/depth/noise instead of repeated shot variants.
+        x=x.sort_values("boundary_score")
+        x=x.drop_duplicates(["qubits","total_depth","noise_probability","boundary_type"])
+        pieces.append(x.head(per_type))
+    out=pd.concat(pieces,ignore_index=True)
+    cols=["boundary_type","qubits","total_depth","noise_probability","shots",
+          "check_interval","raw","zne","qed_repeated","qed_repeated_zne",
+          "mean_acceptance","clipping_fraction","boundary_score"]
+    if "acceptance_target" in out.columns:
+        cols.append("acceptance_target")
+    return out[[x for x in cols if x in out.columns]]
+
+
 def l_comparison(agg):
     q=agg[agg.method.isin(["qed_repeated","qed_repeated_zne"])].copy()
     idx=["qubits","total_depth","noise_probability","shots","method"]
@@ -116,6 +178,8 @@ def analyze(input_path: Path, output_dir: Path, require_complete=False):
     agg=aggregate(df)
     wide=method_wide(agg)
     candidates=crossover_candidates(wide,agg)
+    qem_qed,qed_hybrid,acceptance=targeted_candidates(wide,agg)
+    recommended=recommended_design(qem_qed,qed_hybrid,acceptance)
     lerr,lacc=l_comparison(agg)
 
     hybrid=df[df.method=="qed_repeated_zne"]
@@ -130,13 +194,20 @@ def analyze(input_path: Path, output_dir: Path, require_complete=False):
         "zne_mean_error":float(df[df.method=="zne"].absolute_error.mean()),
         "qed_mean_error":float(df[df.method=="qed_repeated"].absolute_error.mean()),
         "hybrid_mean_error":float(hybrid.absolute_error.mean()),
-        "qem_qed_crossover_candidates_written":int(len(candidates)),
+        "qem_qed_crossover_candidates_written":int(len(qem_qed)),
+        "qed_hybrid_candidates_written":int(len(qed_hybrid)),
+        "acceptance_boundary_candidates_written":int(len(acceptance)),
+        "experiment_3_recommended_design_rows":int(len(recommended)),
         "paired_L_invariance":"passed",
     }
     (output_dir/"summary.json").write_text(json.dumps(summary,indent=2)+"\n")
     agg.to_csv(output_dir/"seed_aggregated_method_cells.csv",index=False)
     wide.to_csv(output_dir/"method_comparison_cells.csv",index=False)
     candidates.to_csv(output_dir/"experiment_3_crossover_candidates.csv",index=False)
+    qem_qed.to_csv(output_dir/"experiment_3_qem_qed_candidates.csv",index=False)
+    qed_hybrid.to_csv(output_dir/"experiment_3_qed_hybrid_candidates.csv",index=False)
+    acceptance.to_csv(output_dir/"experiment_3_acceptance_boundary_candidates.csv",index=False)
+    recommended.to_csv(output_dir/"experiment_3_recommended_design.csv",index=False)
     lerr.to_csv(output_dir/"check_interval_error_comparison.csv",index=False)
     lacc.to_csv(output_dir/"check_interval_acceptance_comparison.csv",index=False)
 
@@ -147,7 +218,8 @@ def analyze(input_path: Path, output_dir: Path, require_complete=False):
     regime.to_csv(output_dir/"lowest_error_regimes.csv",index=False)
 
     print(json.dumps(summary,indent=2))
-    print(f"Experiment 3 candidates: {output_dir/'experiment_3_crossover_candidates.csv'}")
+    print(f"Experiment 3 recommended design: {output_dir/'experiment_3_recommended_design.csv'}")
+    print("Provisional only until Experiment 2 reaches 9600/9600.")
 
 def main():
     p=argparse.ArgumentParser()
